@@ -3,6 +3,13 @@ import { useOrders } from '../../context/OrderContext';
 import { db, isFirebaseConfigured } from '../../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
+  uploadImageToCloudinary, 
+  uploadModelToCloudinary, 
+  generate3DFromImage, 
+  getCloudinaryConfig, 
+  saveCloudinaryConfig 
+} from '../../services/cloudinaryService';
+import { 
   Clock, 
   ChefHat, 
   CheckSquare, 
@@ -20,7 +27,14 @@ import {
   Calendar,
   FileText,
   TrendingUp,
-  ShoppingBag
+  ShoppingBag,
+  Upload,
+  Sparkles,
+  Image as ImageIcon,
+  Check,
+  AlertCircle,
+  RefreshCw,
+  Settings
 } from 'lucide-react';
 
 const PRODUCT_COLORS = [
@@ -503,6 +517,95 @@ const Dashboard = () => {
     heightCm: '8',
     depthCm: '12'
   });
+
+  // Estados para subida local a Cloudinary y generación IA
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [uploadingModel, setUploadingModel] = useState(false);
+  const [modelUploadProgress, setModelUploadProgress] = useState(0);
+  const [isGenerating3D, setIsGenerating3D] = useState(false);
+  const [aiFeedbackMessage, setAiFeedbackMessage] = useState('');
+
+  // Configuración de Cloudinary
+  const [cloudinaryConfig, setCloudinaryConfigState] = useState(getCloudinaryConfig);
+  const [showCloudinarySettings, setShowCloudinarySettings] = useState(false);
+
+  const handleImageFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    setImageUploadProgress(0);
+    try {
+      const url = await uploadImageToCloudinary(file, (p) => setImageUploadProgress(p));
+      setFormData(prev => ({ ...prev, image: url }));
+      setAiFeedbackMessage('✅ Foto cargada con éxito');
+      setTimeout(() => setAiFeedbackMessage(''), 3500);
+    } catch (err) {
+      alert(`Error al subir imagen: ${err.message}`);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleModelFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingModel(true);
+    setModelUploadProgress(0);
+    try {
+      const url = await uploadModelToCloudinary(file, (p) => setModelUploadProgress(p));
+      setFormData(prev => ({ ...prev, modelUrl: url, hasAR: true }));
+      setAiFeedbackMessage('✅ Modelo 3D (.glb) subido con éxito');
+      setTimeout(() => setAiFeedbackMessage(''), 3500);
+    } catch (err) {
+      alert(`Error al subir modelo 3D: ${err.message}`);
+    } finally {
+      setUploadingModel(false);
+    }
+  };
+
+  const handleGenerate3DFromPhoto = async () => {
+    if (!formData.image) {
+      alert('Primero debes subir una foto del producto.');
+      return;
+    }
+
+    setIsGenerating3D(true);
+    setAiFeedbackMessage('🪄 Analizando foto y configurando modelo 3D sin mesa...');
+    try {
+      const result = await generate3DFromImage({
+        imageUrl: formData.image,
+        name: formData.name,
+        category: formData.category,
+        meshyApiKey: cloudinaryConfig.meshyApiKey
+      });
+
+      setFormData(prev => ({
+        ...prev,
+        hasAR: true,
+        modelUrl: result.modelUrl,
+        widthCm: result.widthCm,
+        heightCm: result.heightCm,
+        depthCm: result.depthCm
+      }));
+
+      setAiFeedbackMessage(`✨ ¡3D listo! ${result.templateName || 'Modelo limpio sin mesa asignado'}`);
+      setTimeout(() => setAiFeedbackMessage(''), 4500);
+    } catch (err) {
+      alert(`Error al generar 3D: ${err.message}`);
+    } finally {
+      setIsGenerating3D(false);
+    }
+  };
+
+  const handleSaveCloudinarySettings = (e) => {
+    e.preventDefault();
+    saveCloudinaryConfig(cloudinaryConfig);
+    setShowCloudinarySettings(false);
+    alert('Configuración de Cloudinary guardada correctamente.');
+  };
 
   const getOrdersByStatus = (status) => orders.filter(order => order.status === status);
 
@@ -1499,27 +1602,51 @@ const Dashboard = () => {
           {/* Subheader con botón */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontFamily: 'var(--font-serif)', color: 'var(--color-primary)', margin: 0 }}>Carta del Establecimiento</h2>
-            <button 
-              onClick={handleOpenAdd}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                backgroundColor: 'var(--color-primary)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '0.625rem 1.25rem',
-                fontWeight: '600',
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--color-primary)'}
-            >
-              <Plus size={18} /> Cargar Producto
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowCloudinarySettings(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  backgroundColor: '#FAF5EE',
+                  color: '#8B5A2B',
+                  border: '1.5px solid #D4A373',
+                  borderRadius: '10px',
+                  padding: '0.625rem 1rem',
+                  fontWeight: '600',
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F5EBE0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FAF5EE'}
+              >
+                <Settings size={17} /> Cloudinary & IA 3D
+              </button>
+              <button 
+                onClick={handleOpenAdd}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.625rem 1.25rem',
+                  fontWeight: '600',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-accent)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--color-primary)'}
+              >
+                <Plus size={18} /> Cargar Producto
+              </button>
+            </div>
           </div>
 
           {/* Grilla de productos */}
@@ -2755,21 +2882,124 @@ const Dashboard = () => {
                 />
               </div>
 
+              {/* Foto del Producto: Subida Directa a Cloudinary o URL */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.375rem' }}>
-                  URL de Imagen (Cloudinary / Unsplash)
+                  Foto del Producto
                 </label>
-                <input 
-                  type="url" 
-                  value={formData.image}
-                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  placeholder="https://res.cloudinary.com/... o https://images.unsplash.com/..."
-                  className="input"
-                />
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                  Puedes pegar el enlace de tu foto subida a Cloudinary o dejar en blanco para foto por defecto.
-                </p>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {/* Botón para subir archivo desde la computadora o celular */}
+                  <label style={{
+                    backgroundColor: uploadingImage ? '#9ca3af' : 'var(--color-primary, #2C3E2D)',
+                    color: '#FFFFFF',
+                    padding: '0.65rem 1rem',
+                    borderRadius: '10px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                    transition: 'background-color 0.2s'
+                  }}>
+                    <Upload size={16} />
+                    <span>{uploadingImage ? `Subiendo a Cloudinary (${imageUploadProgress}%)...` : '📁 Subir Foto desde este Dispositivo'}</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      style={{ display: 'none' }}
+                      disabled={uploadingImage}
+                      onChange={handleImageFileUpload}
+                    />
+                  </label>
+
+                  {/* Vista previa de la foto */}
+                  {formData.image && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      backgroundColor: '#F9F6F0',
+                      padding: '0.6rem',
+                      borderRadius: '10px',
+                      border: '1px solid #EBE4DA'
+                    }}>
+                      <img 
+                        src={formData.image} 
+                        alt="Vista previa" 
+                        style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px' }} 
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: 'var(--color-primary)', display: 'block' }}>
+                          Foto lista
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#6b7280', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', display: 'block' }}>
+                          {formData.image}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campo de URL alternativo */}
+                  <input 
+                    type="url" 
+                    value={formData.image}
+                    onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                    placeholder="O pega una URL: https://res.cloudinary.com/... o Unsplash"
+                    className="input"
+                    style={{ fontSize: '0.8rem', padding: '0.45rem 0.65rem' }}
+                  />
+                </div>
               </div>
+
+              {/* Botón de Generación de 3D con IA a partir de la foto */}
+              {formData.image && (
+                <button
+                  type="button"
+                  onClick={handleGenerate3DFromPhoto}
+                  disabled={isGenerating3D}
+                  style={{
+                    backgroundColor: '#FAF5EE',
+                    border: '1.5px solid #D4A373',
+                    color: '#8B5A2B',
+                    borderRadius: '10px',
+                    padding: '0.65rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    cursor: isGenerating3D ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 6px rgba(212, 163, 115, 0.25)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Sparkles size={16} color="#D4A373" />
+                  <span>{isGenerating3D ? 'Analizando foto y preparando 3D...' : '🪄 Generar Vista 3D / AR desde la Foto'}</span>
+                </button>
+              )}
+
+              {/* Mensaje de feedback de IA / Subida */}
+              {aiFeedbackMessage && (
+                <div style={{
+                  backgroundColor: '#ECFDF5',
+                  color: '#065F46',
+                  border: '1px solid #A7F3D0',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span>{aiFeedbackMessage}</span>
+                </div>
+              )}
 
               {/* Sección de Realidad Aumentada y 3D */}
               <div style={{
@@ -2796,9 +3026,36 @@ const Dashboard = () => {
                 {formData.hasAR && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.25rem' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#4b5563', marginBottom: '0.25rem' }}>
-                        URL del Modelo 3D (.glb en Cloudinary o ruta local)
-                      </label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#4b5563' }}>
+                          Archivo / URL del Modelo 3D (.glb)
+                        </label>
+                        {/* Subir .glb directamente a Cloudinary */}
+                        <label style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #D4A373',
+                          borderRadius: '6px',
+                          padding: '0.25rem 0.55rem',
+                          fontSize: '0.72rem',
+                          fontWeight: '600',
+                          color: '#2C3E2D',
+                          cursor: uploadingModel ? 'not-allowed' : 'pointer'
+                        }}>
+                          <Upload size={12} />
+                          <span>{uploadingModel ? `Subiendo (${modelUploadProgress}%)...` : 'Subir .glb local'}</span>
+                          <input 
+                            type="file" 
+                            accept=".glb,.gltf" 
+                            style={{ display: 'none' }}
+                            disabled={uploadingModel}
+                            onChange={handleModelFileUpload}
+                          />
+                        </label>
+                      </div>
+
                       <input 
                         type="text"
                         value={formData.modelUrl}
@@ -2938,6 +3195,168 @@ const Dashboard = () => {
                 </button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Configuración de Cloudinary & IA */}
+      {showCloudinarySettings && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '2rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #EBE4DA'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', color: 'var(--color-primary, #2C3E2D)', margin: 0 }}>
+                  ☁️ Configuración Cloudinary & IA
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0.25rem 0 0 0' }}>
+                  Permite subir fotos y modelos 3D directamente desde este dispositivo a la nube.
+                </p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowCloudinarySettings(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#9ca3af' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{
+              backgroundColor: (cloudinaryConfig.cloudName && cloudinaryConfig.uploadPreset) ? '#ECFDF5' : '#FEF3C7',
+              border: `1px solid ${(cloudinaryConfig.cloudName && cloudinaryConfig.uploadPreset) ? '#A7F3D0' : '#FDE68A'}`,
+              borderRadius: '10px',
+              padding: '0.75rem 1rem',
+              marginBottom: '1.25rem',
+              fontSize: '0.82rem',
+              color: (cloudinaryConfig.cloudName && cloudinaryConfig.uploadPreset) ? '#065F46' : '#92400E'
+            }}>
+              {(cloudinaryConfig.cloudName && cloudinaryConfig.uploadPreset) ? (
+                <div>
+                  <strong>✅ Cloudinary Conectado:</strong> Las fotos y archivos 3D se subirán directamente a tu cuenta <code>{cloudinaryConfig.cloudName}</code>.
+                </div>
+              ) : (
+                <div>
+                  <strong>⚠️ Modo Local Temporal:</strong> Sin Cloudinary, las imágenes se guardan temporalmente en base64 en este navegador. Ingresa tu Cloud Name y Upload Preset para que persistan en la nube y funcionen en Vercel.
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveCloudinarySettings} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '0.35rem' }}>
+                  Cloud Name <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={cloudinaryConfig.cloudName || ''}
+                  onChange={(e) => setCloudinaryConfigState(prev => ({ ...prev, cloudName: e.target.value.trim() }))}
+                  placeholder="Ej: dxyzt123 o nombre_de_tu_cloud"
+                  className="input"
+                  style={{ width: '100%', fontSize: '0.9rem' }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>
+                  Lo encuentras en tu Dashboard principal de Cloudinary.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '0.35rem' }}>
+                  Upload Preset (Modo Unsigned) <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={cloudinaryConfig.uploadPreset || ''}
+                  onChange={(e) => setCloudinaryConfigState(prev => ({ ...prev, uploadPreset: e.target.value.trim() }))}
+                  placeholder="Ej: cafeteria_upload"
+                  className="input"
+                  style={{ width: '100%', fontSize: '0.9rem' }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>
+                  En Cloudinary: Settings (⚙️) ➔ Upload presets ➔ Add upload preset ➔ Signing Mode: <strong>Unsigned</strong>.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '0.35rem' }}>
+                  Meshy AI API Key <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#6b7280' }}>(Opcional)</span>
+                </label>
+                <input
+                  type="password"
+                  value={cloudinaryConfig.meshyApiKey || ''}
+                  onChange={(e) => setCloudinaryConfigState(prev => ({ ...prev, meshyApiKey: e.target.value.trim() }))}
+                  placeholder="msy_..."
+                  className="input"
+                  style={{ width: '100%', fontSize: '0.9rem' }}
+                />
+                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>
+                  Opcional. Si no tienes Meshy, el sistema asignará inteligentemente tazas limpias con plato, copas o platos servidos sin costo.
+                </span>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+                marginTop: '0.75rem',
+                borderTop: '1px solid #e5e7eb',
+                paddingTop: '1rem'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCloudinarySettings(false)}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    backgroundColor: '#f3f4f6',
+                    color: '#4b5563',
+                    border: 'none',
+                    borderRadius: '10px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '0.6rem 1.25rem',
+                    backgroundColor: 'var(--color-primary, #2C3E2D)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '10px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Guardar Configuración
+                </button>
+              </div>
             </form>
           </div>
         </div>
