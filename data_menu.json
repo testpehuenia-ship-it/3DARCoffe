@@ -1,0 +1,87 @@
+[
+  {
+    "id": "c1",
+    "name": "Café de Especialidad",
+    "description": "Origen Colombia, notas a chocolate y nuez",
+    "price": 2500,
+    "category": "cafeteria",
+    "image": "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400&q=80",
+    "isActive": true,
+    "hasAR": true,
+    "modelUrl": "/models/teacup.glb",
+    "iosModelUrl": null,
+    "dimensions": {
+      "width": 0.12,
+      "height": 0.08,
+      "depth": 0.12
+    }
+  },
+  {
+    "id": "c2",
+    "name": "Latte Patagonia",
+    "description": "Espresso con leche texturizada y syrup de lavanda",
+    "price": 3200,
+    "category": "cafeteria",
+    "image": "https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?w=400&q=80",
+    "isActive": true,
+    "hasAR": true,
+    "modelUrl": "/models/teacup.glb",
+    "iosModelUrl": null,
+    "dimensions": {
+      "width": 0.14,
+      "height": 0.08,
+      "depth": 0.14
+    }
+  },
+  {
+    "id": "c3",
+    "name": "Chocolate Caliente Submarino",
+    "description": "Leche hirviendo con barra de chocolate amargo 70%",
+    "price": 3500,
+    "category": "cafeteria",
+    "image": "https://images.unsplash.com/photo-1542990253-0d0f5be5f0ed?w=400&q=80",
+    "isActive": true,
+    "hasAR": true,
+    "modelUrl": "/models/teacup.glb",
+    "iosModelUrl": null,
+    "dimensions": {
+      "width": 0.12,
+      "height": 0.08,
+      "depth": 0.12
+    }
+  },
+  {
+    "id": "h1",
+    "name": "Helado Artesanal",
+    "description": "Sabores a elección: Calafate, Dulce de Leche, Chocolate",
+    "price": 2000,
+    "category": "heladeria",
+    "image": "https://images.unsplash.com/photo-1557142046-c704a3adf364?w=400&q=80",
+    "isActive": true,
+    "hasAR": true,
+    "modelUrl": "/models/icecream.glb",
+    "iosModelUrl": null,
+    "dimensions": {
+      "width": 0.10,
+      "height": 0.15,
+      "depth": 0.10
+    }
+  },
+  {
+    "id": "p1",
+    "name": "Torta Galesa",
+    "description": "Porción de receta tradicional del sur con frutos secos",
+    "price": 4000,
+    "category": "pasteleria",
+    "image": "https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=400&q=80",
+    "isActive": true,
+    "hasAR": true,
+    "modelUrl": "/models/dessert.glb",
+    "iosModelUrl": null,
+    "dimensions": {
+      "width": 0.15,
+      "height": 0.10,
+      "depth": 0.15
+    }
+  }
+]
