@@ -6,6 +6,7 @@ import {
   uploadImageToCloudinary, 
   uploadModelToCloudinary, 
   generate3DFromImage, 
+  getCleanTemplateModel,
   getCloudinaryConfig, 
   saveCloudinaryConfig 
 } from '../../services/cloudinaryService';
@@ -526,9 +527,10 @@ const Dashboard = () => {
   const [isGenerating3D, setIsGenerating3D] = useState(false);
   const [aiFeedbackMessage, setAiFeedbackMessage] = useState('');
 
-  // Configuración de Cloudinary
+  // Configuración de Cloudinary e IA
   const [cloudinaryConfig, setCloudinaryConfigState] = useState(getCloudinaryConfig);
   const [showCloudinarySettings, setShowCloudinarySettings] = useState(false);
+  const [show3DAssistantModal, setShow3DAssistantModal] = useState(false);
 
   const handleImageFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -566,37 +568,96 @@ const Dashboard = () => {
     }
   };
 
+  const handleSelectTemplate = (templateKey) => {
+    let t;
+    if (templateKey === 'teacup') {
+      t = {
+        modelUrl: '/models/teacup.glb',
+        widthCm: '12',
+        heightCm: '8',
+        depthCm: '12',
+        templateName: 'Taza de Porcelana con Plato (Sin mesa)'
+      };
+    } else if (templateKey === 'icecream') {
+      t = {
+        modelUrl: '/models/icecream.glb',
+        widthCm: '10',
+        heightCm: '15',
+        depthCm: '10',
+        templateName: 'Copa de Helado Artesanal (Sin mesa)'
+      };
+    } else if (templateKey === 'dessert') {
+      t = {
+        modelUrl: '/models/dessert.glb',
+        widthCm: '15',
+        heightCm: '10',
+        depthCm: '15',
+        templateName: 'Copa Parfait / Postre (Sin mesa)'
+      };
+    } else {
+      t = {
+        modelUrl: '/models/dish.glb',
+        widthCm: '20',
+        heightCm: '6',
+        depthCm: '20',
+        templateName: 'Plato Servido (Sin mesa)'
+      };
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      hasAR: true,
+      modelUrl: t.modelUrl,
+      widthCm: t.widthCm,
+      heightCm: t.heightCm,
+      depthCm: t.depthCm
+    }));
+
+    setShow3DAssistantModal(false);
+    setAiFeedbackMessage(`✨ Plantilla 3D asignada: ${t.templateName}`);
+    setTimeout(() => setAiFeedbackMessage(''), 4500);
+  };
+
   const handleGenerate3DFromPhoto = async () => {
     if (!formData.image) {
       alert('Primero debes subir una foto del producto.');
       return;
     }
 
-    setIsGenerating3D(true);
-    setAiFeedbackMessage('🪄 Analizando foto y configurando modelo 3D sin mesa...');
-    try {
-      const result = await generate3DFromImage({
-        imageUrl: formData.image,
-        name: formData.name,
-        category: formData.category,
-        meshyApiKey: cloudinaryConfig.meshyApiKey
-      });
+    // Si tiene API Key de Meshy configurada, ejecutamos la generación por IA real con sondeo de progreso
+    if (cloudinaryConfig.meshyApiKey) {
+      setIsGenerating3D(true);
+      setAiFeedbackMessage('🤖 Conectando con Meshy AI Image-to-3D...');
+      try {
+        const result = await generate3DFromImage({
+          imageUrl: formData.image,
+          name: formData.name,
+          category: formData.category,
+          meshyApiKey: cloudinaryConfig.meshyApiKey,
+          onProgress: (percent, msg) => {
+            setAiFeedbackMessage(`⏳ IA 3D (${percent}%): ${msg}`);
+          }
+        });
 
-      setFormData(prev => ({
-        ...prev,
-        hasAR: true,
-        modelUrl: result.modelUrl,
-        widthCm: result.widthCm,
-        heightCm: result.heightCm,
-        depthCm: result.depthCm
-      }));
+        setFormData(prev => ({
+          ...prev,
+          hasAR: true,
+          modelUrl: result.modelUrl,
+          widthCm: result.widthCm || '12',
+          heightCm: result.heightCm || '10',
+          depthCm: result.depthCm || '12'
+        }));
 
-      setAiFeedbackMessage(`✨ ¡3D listo! ${result.templateName || 'Modelo limpio sin mesa asignado'}`);
-      setTimeout(() => setAiFeedbackMessage(''), 4500);
-    } catch (err) {
-      alert(`Error al generar 3D: ${err.message}`);
-    } finally {
-      setIsGenerating3D(false);
+        setAiFeedbackMessage('✨ ¡Modelo 3D (.glb) generado con éxito por IA!');
+        setTimeout(() => setAiFeedbackMessage(''), 5000);
+      } catch (err) {
+        alert(`Error al generar 3D con IA: ${err.message}`);
+      } finally {
+        setIsGenerating3D(false);
+      }
+    } else {
+      // Si no hay API Key de Meshy, abrimos el Asistente 3D para guiar al usuario
+      setShow3DAssistantModal(true);
     }
   };
 
@@ -2979,7 +3040,7 @@ const Dashboard = () => {
                   }}
                 >
                   <Sparkles size={16} color="#D4A373" />
-                  <span>{isGenerating3D ? 'Analizando foto y preparando 3D...' : '🪄 Generar Vista 3D / AR desde la Foto'}</span>
+                  <span>{isGenerating3D ? 'Generando modelo 3D con IA...' : 'Generar Vista 3D / AR desde la Foto'}</span>
                 </button>
               )}
 
@@ -3358,6 +3419,307 @@ const Dashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Asistente de Generación 3D & AR */}
+      {show3DAssistantModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '1rem',
+          backdropFilter: 'blur(5px)'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '22px',
+            width: '100%',
+            maxWidth: '560px',
+            maxHeight: '92vh',
+            overflowY: 'auto',
+            padding: '1.75rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+            border: '1px solid #EBE4DA'
+          }}>
+            {/* Header del Asistente */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#FAF5EE', padding: '0.25rem 0.65rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 'bold', color: '#8B5A2B', marginBottom: '0.35rem' }}>
+                  <Sparkles size={13} color="#D4A373" /> Asistente de Modelado 3D & AR
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-primary, #2C3E2D)', margin: 0 }}>
+                  ¿Cómo deseas preparar la vista 3D de tu foto?
+                </h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShow3DAssistantModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#9ca3af', padding: '0.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Vista previa de la foto actual */}
+            {formData.image && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                backgroundColor: '#F9F6F0',
+                padding: '0.65rem',
+                borderRadius: '12px',
+                border: '1px solid #EBE4DA',
+                marginBottom: '1.25rem'
+              }}>
+                <img 
+                  src={formData.image} 
+                  alt="Foto subida" 
+                  style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '8px' }} 
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-primary)', display: 'block' }}>
+                    Foto a procesar ({formData.name || 'Producto'})
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: '#6b7280', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', display: 'block' }}>
+                    {formData.image}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Opción 1: Generar modelo 3D real con IA gratuita */}
+            <div style={{
+              backgroundColor: '#F8FAFC',
+              border: '1.5px solid #E2E8F0',
+              borderRadius: '14px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>🤖</span>
+                <strong style={{ fontSize: '0.92rem', color: '#1e293b' }}>
+                  Opción 1: Generar modelo 3D real con IA Gratuita (30 seg)
+                </strong>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: '#475569', margin: '0 0 0.75rem 0', lineHeight: '1.4' }}>
+                Las IAs neuronales convierten tu foto en un archivo 3D <code>.glb</code> volumétrico. Puedes crearlo gratis en segundos en cualquiera de estas dos herramientas líderes:
+              </p>
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                <a
+                  href="https://www.tripo3d.ai"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    backgroundColor: '#1E293B',
+                    color: '#FFFFFF',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    textDecoration: 'none'
+                  }}
+                >
+                  ⚡ Abrir Tripo3D (10 seg) ↗
+                </a>
+                <a
+                  href="https://www.meshy.ai"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    backgroundColor: '#4338CA',
+                    color: '#FFFFFF',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    textDecoration: 'none'
+                  }}
+                >
+                  ✨ Abrir Meshy.ai ↗
+                </a>
+              </div>
+              <p style={{ fontSize: '0.72rem', color: '#64748b', margin: 0, lineHeight: '1.3' }}>
+                👉 <strong>Pasos:</strong> 1. Sube tu foto en Tripo3D o Meshy. 2. Descarga el archivo <strong>.glb</strong>. 3. Pulsa el botón <strong>"Subir .glb local"</strong> aquí en el formulario (se guardará en tu Cloudinary).
+              </p>
+            </div>
+
+            {/* Opción 2: Usar plantilla 3D limpia existente */}
+            <div style={{
+              backgroundColor: '#FAF5EE',
+              border: '1.5px solid #EBE4DA',
+              borderRadius: '14px',
+              padding: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>☕</span>
+                <strong style={{ fontSize: '0.92rem', color: '#8B5A2B' }}>
+                  Opción 2: Asignar Plantilla 3D Limpia (Inmediato - Sin Mesas Falsas)
+                </strong>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: '0 0 0.75rem 0', lineHeight: '1.4' }}>
+                Si quieres activar la Realidad Aumentada de inmediato a escala real 1:1, selecciona el modelo optimizado que no tiene mesas artificiales debajo para que se pose en la mesa real del cliente:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplate('teacup')}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #D4A373',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    color: '#2C3E2D',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FAF5EE'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                  ☕ Taza con Plato (Café/Té)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplate('icecream')}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #D4A373',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    color: '#2C3E2D',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FAF5EE'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                  🍨 Copa de Helado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplate('dessert')}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #D4A373',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    color: '#2C3E2D',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FAF5EE'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                  🍰 Copa Parfait / Postre
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTemplate('dish')}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #D4A373',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    fontSize: '0.78rem',
+                    fontWeight: '600',
+                    color: '#2C3E2D',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FAF5EE'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                  🍽️ Plato Servido (Comida)
+                </button>
+              </div>
+            </div>
+
+            {/* Opción 3: Configurar API Key para 1-clic */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.75rem 1rem',
+              backgroundColor: '#F1F5F9',
+              borderRadius: '10px',
+              fontSize: '0.78rem'
+            }}>
+              <span style={{ color: '#475569' }}>
+                ¿Quieres generar 3D en 1 clic directamente desde aquí?
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShow3DAssistantModal(false);
+                  setShowCloudinarySettings(true);
+                }}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid #CBD5E1',
+                  borderRadius: '6px',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.75rem',
+                  fontWeight: '600',
+                  color: '#1E293B',
+                  cursor: 'pointer'
+                }}
+              >
+                ⚙️ Configurar Meshy API Key
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+              <button
+                type="button"
+                onClick={() => setShow3DAssistantModal(false)}
+                style={{
+                  padding: '0.55rem 1.25rem',
+                  backgroundColor: '#E2E8F0',
+                  color: '#334155',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -141,55 +141,9 @@ export const uploadModelToCloudinary = async (file, onProgress) => {
 };
 
 /**
- * Genera o empareja un modelo 3D limpio (SIN mesa artificial) a partir de la foto del producto
- * @param {Object} params - Datos del producto ({ imageUrl, name, category, meshyApiKey })
- * @returns {Promise<{ modelUrl: string, dimensions: { width: number, height: number, depth: number }, widthCm: string, heightCm: string, depthCm: string, isAiGenerated: boolean }>}
+ * Obtiene una plantilla limpia 3D (sin mesa artificial) según la categoría o nombre
  */
-export const generate3DFromImage = async ({ imageUrl, name = '', category = 'cafeteria', meshyApiKey = '' }) => {
-  const apiKey = meshyApiKey || import.meta.env.VITE_MESHY_API_KEY || '';
-
-  // Si el usuario configuró una API Key de Meshy.ai, intentamos la generación neural por IA
-  if (apiKey && imageUrl && imageUrl.startsWith('http')) {
-    try {
-      console.log('🤖 Solicitando generación 3D con Meshy AI Image-to-3D...');
-      const response = await fetch('https://api.meshy.ai/v2/image-to-3d', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          enable_pbr: true,
-          ai_model: 'meshy-4',
-          should_remesh: true,
-          // Instrucción para evitar mesas artificiales y generar el objeto limpio
-          negative_prompt: 'table, furniture, background, wooden board, surface, floor'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const taskId = data.result;
-        console.log('⏳ Tarea de IA 3D creada en Meshy con ID:', taskId);
-        // Si la tarea se inició, devolvemos el resultado de proceso
-        return {
-          modelUrl: `https://assets.meshy.ai/${taskId}.glb`,
-          widthCm: '12',
-          heightCm: '10',
-          depthCm: '12',
-          isAiGenerated: true,
-          taskId
-        };
-      }
-    } catch (error) {
-      console.warn('Meshy API no respondió o hubo un error. Usando asignación inteligente de modelo 3D limpio...', error);
-    }
-  }
-
-  // --- Motor de Asignación Inteligente Limpio (Sin Mesa Artificial) ---
-  // Analiza el nombre del producto y categoría para asignar el modelo 3D correspondiente,
-  // con proporciones realistas (1:1) sin fondo ni tabla debajo.
+export const getCleanTemplateModel = ({ name = '', category = 'cafeteria' }) => {
   const lowerName = name.toLowerCase();
 
   if (
@@ -250,7 +204,6 @@ export const generate3DFromImage = async ({ imageUrl, name = '', category = 'caf
     };
   }
 
-  // Default para comidas y platos servidos
   return {
     modelUrl: '/models/dish.glb',
     widthCm: '20',
@@ -258,5 +211,93 @@ export const generate3DFromImage = async ({ imageUrl, name = '', category = 'caf
     depthCm: '20',
     isAiGenerated: false,
     templateName: 'Plato Servido (Sin mesa)'
+  };
+};
+
+/**
+ * Genera un modelo 3D con IA o asocia la plantilla limpia
+ * @param {Object} params - { imageUrl, name, category, meshyApiKey, onProgress }
+ */
+export const generate3DFromImage = async ({ 
+  imageUrl, 
+  name = '', 
+  category = 'cafeteria', 
+  meshyApiKey = '',
+  onProgress 
+}) => {
+  const apiKey = meshyApiKey || import.meta.env.VITE_MESHY_API_KEY || '';
+
+  // Si el usuario tiene API Key de Meshy y una URL pública de Cloudinary/Web
+  if (apiKey && imageUrl && imageUrl.startsWith('http')) {
+    try {
+      console.log('🤖 Iniciando generación 3D con Meshy AI...');
+      if (onProgress) onProgress(10, 'Iniciando generación con Meshy AI...');
+
+      const response = await fetch('https://api.meshy.ai/v2/image-to-3d', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          enable_pbr: true,
+          ai_model: 'meshy-4',
+          should_remesh: true,
+          negative_prompt: 'table, furniture, background, wooden board, surface, floor, dining table'
+        })
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.message || `Error en Meshy (${response.status})`);
+      }
+
+      const data = await response.json();
+      const taskId = data.result;
+      console.log('⏳ Tarea Meshy creada:', taskId);
+
+      // Sondeo del progreso (polling)
+      let attempts = 0;
+      while (attempts < 60) {
+        await new Promise(r => setTimeout(r, 4000));
+        attempts++;
+
+        const pollRes = await fetch(`https://api.meshy.ai/v2/image-to-3d/${taskId}`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+
+        if (pollRes.ok) {
+          const taskData = await pollRes.json();
+          const progress = taskData.progress || Math.min(95, attempts * 4);
+          if (onProgress) onProgress(progress, `Construyendo modelo 3D con IA (${progress}%)...`);
+
+          if (taskData.status === 'SUCCEEDED' && taskData.model_urls?.glb) {
+            return {
+              modelUrl: taskData.model_urls.glb,
+              widthCm: '12',
+              heightCm: '10',
+              depthCm: '12',
+              isAiGenerated: true,
+              templateName: 'Modelo 3D Generado con IA (Meshy)'
+            };
+          }
+
+          if (taskData.status === 'FAILED') {
+            throw new Error(taskData.task_error?.message || 'Meshy no pudo generar el modelo 3D.');
+          }
+        }
+      }
+      throw new Error('Tiempo de espera agotado. El modelo tarda más de lo previsto.');
+    } catch (error) {
+      console.error('Error generando con Meshy AI:', error);
+      throw error;
+    }
+  }
+
+  // Si no hay API Key configurada
+  return {
+    ...getCleanTemplateModel({ name, category }),
+    hasApiKey: false
   };
 };
