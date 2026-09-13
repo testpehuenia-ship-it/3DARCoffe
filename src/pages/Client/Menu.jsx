@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useOrders } from '../../context/OrderContext';
 import { ShoppingBag, Plus, Minus, ArrowRight, Box, Sparkles } from 'lucide-react';
 import Product3DModal from '../../components/Product3DModal';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 const Menu = () => {
   const navigate = useNavigate();
@@ -271,19 +272,21 @@ const Menu = () => {
         </div>
       )}
 
-      {/* Modal 3D y Realidad Aumentada */}
+      {/* Modal 3D y Realidad Aumentada protegido con ErrorBoundary */}
       {selectedProduct3D && (
-        <Product3DModal
-          product={selectedProduct3D}
-          onClose={() => setSelectedProduct3D(null)}
-          onAddToCart={(prod) => {
-            const qty = prod.quantity || 1;
-            for (let i = 0; i < qty; i++) {
-              addToCart(prod);
-            }
-          }}
-          currentQuantity={getQuantity(selectedProduct3D.id)}
-        />
+        <ErrorBoundary onReset={() => setSelectedProduct3D(null)}>
+          <Product3DModal
+            product={selectedProduct3D}
+            onClose={() => setSelectedProduct3D(null)}
+            onAddToCart={(prod) => {
+              const qty = prod.quantity || 1;
+              for (let i = 0; i < qty; i++) {
+                addToCart(prod);
+              }
+            }}
+            currentQuantity={getQuantity(selectedProduct3D.id)}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

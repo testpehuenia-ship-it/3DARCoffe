@@ -1,20 +1,19 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   RotateCw, 
   RotateCcw,
-  Maximize2, 
   QrCode, 
   Plus, 
   Minus, 
   Check, 
   Camera, 
-  Sparkles,
+  Sparkles, 
   Smartphone,
   Info,
   ZoomIn,
   ZoomOut,
-  Compass,
-  Layers
+  Compass
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
