@@ -538,10 +538,11 @@ const Dashboard = () => {
 
     setUploadingImage(true);
     setImageUploadProgress(0);
+    setAiFeedbackMessage(`⏳ Procesando y optimizando imagen (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
     try {
       const url = await uploadImageToCloudinary(file, (p) => setImageUploadProgress(p));
       setFormData(prev => ({ ...prev, image: url }));
-      setAiFeedbackMessage('✅ Foto cargada con éxito');
+      setAiFeedbackMessage('✅ Foto cargada con éxito en Cloudinary');
       setTimeout(() => setAiFeedbackMessage(''), 3500);
     } catch (err) {
       alert(`Error al subir imagen: ${err.message}`);
@@ -556,11 +557,15 @@ const Dashboard = () => {
 
     setUploadingModel(true);
     setModelUploadProgress(0);
+    setAiFeedbackMessage(`⏳ Procesando archivo 3D (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
     try {
-      const url = await uploadModelToCloudinary(file, (p) => setModelUploadProgress(p));
+      const url = await uploadModelToCloudinary(file, (p, msg) => {
+        if (typeof p === 'number') setModelUploadProgress(p);
+        if (msg) setAiFeedbackMessage(msg);
+      });
       setFormData(prev => ({ ...prev, modelUrl: url, hasAR: true }));
-      setAiFeedbackMessage('✅ Modelo 3D (.glb) subido con éxito');
-      setTimeout(() => setAiFeedbackMessage(''), 3500);
+      setAiFeedbackMessage('✅ Modelo 3D (.glb) subido con éxito a Cloudinary');
+      setTimeout(() => setAiFeedbackMessage(''), 4500);
     } catch (err) {
       alert(`Error al subir modelo 3D: ${err.message}`);
     } finally {

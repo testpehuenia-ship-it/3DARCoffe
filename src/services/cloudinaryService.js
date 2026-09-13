@@ -1,4 +1,6 @@
 // Servicio para subida de archivos a Cloudinary y generación de modelos 3D con IA
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
 export const getCloudinaryConfig = () => {
   // Primero intentamos leer de localStorage (para configuración dinámica desde el Admin)
@@ -31,6 +33,116 @@ export const saveCloudinaryConfig = (config) => {
 };
 
 /**
+ * Comprime y redimensiona una imagen antes de subirla a Cloudinary
+ * Evita el límite de 10 MB y acelera la carga en dispositivos móviles
+ */
+export const compressImage = async (file, maxWidth = 1920, quality = 0.85) => {
+  // Si ya es un archivo liviano (< 1 MB) o svg, no requiere procesamiento
+  if (!file || file.size < 1024 * 1024 || file.type.includes('svg')) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+
+      if (width > maxWidth || height > maxWidth) {
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxWidth) / height);
+          height = maxWidth;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const compressedFile = new File(
+            [blob],
+            file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+            { type: 'image/jpeg' }
+          );
+          console.log(`🖼️ Foto comprimida: de ${(file.size / 1024 / 1024).toFixed(2)} MB a ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`);
+          resolve(compressedFile);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+
+    img.src = url;
+  });
+};
+
+/**
+ * Optimiza un archivo 3D (.glb) si supera el límite de Cloudinary (10 MB).
+ * Tripo3D y herramientas de IA suelen exportar texturas 4K pesadas (12 a 15 MB).
+ * Esta función reescala las texturas a resolución WebAR (1024px), reduciendo el peso a 1.5 - 3 MB.
+ */
+export const optimizeGlbModel = async (file, onProgress) => {
+  const MAX_ALLOWED_BYTES = 9.5 * 1024 * 1024; // 9.5 MB para no rozar el límite estricto de 10 MB
+
+  if (file.size <= MAX_ALLOWED_BYTES) {
+    return file;
+  }
+
+  if (onProgress) {
+    onProgress(15, `Modelo 3D pesado (${(file.size / 1024 / 1024).toFixed(1)} MB). Optimizando texturas para Cloudinary...`);
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const loader = new GLTFLoader();
+    const gltf = await loader.parseAsync(arrayBuffer, '');
+
+    if (onProgress) {
+      onProgress(45, 'Redimensionando texturas 4K a resolución WebAR...');
+    }
+
+    const exporter = new GLTFExporter();
+    const glbBuffer = await exporter.parseAsync(gltf.scene, {
+      binary: true,
+      maxTextureSize: 1024,
+      animations: gltf.animations || []
+    });
+
+    const optimizedBlob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
+    console.log(`✨ GLB optimizado con éxito: de ${(file.size / 1024 / 1024).toFixed(2)} MB a ${(optimizedBlob.size / 1024 / 1024).toFixed(2)} MB`);
+
+    if (onProgress) {
+      onProgress(85, `Optimizado a ${(optimizedBlob.size / 1024 / 1024).toFixed(1)} MB. Subiendo a Cloudinary...`);
+    }
+
+    return new File([optimizedBlob], file.name.replace(/\.glb$/i, '_opt.glb'), {
+      type: 'model/gltf-binary'
+    });
+  } catch (error) {
+    console.warn('No se pudo optimizar el GLB client-side:', error);
+    return file;
+  }
+};
+
+/**
  * Sube una imagen local a Cloudinary mediante un Unsigned Upload Preset
  * @param {File} file - Archivo de imagen seleccionado por el usuario
  * @param {Function} onProgress - Callback para reportar porcentaje de carga
@@ -39,6 +151,9 @@ export const saveCloudinaryConfig = (config) => {
 export const uploadImageToCloudinary = async (file, onProgress) => {
   const config = getCloudinaryConfig();
 
+  // Optimizar/comprimir imagen automáticamente antes de enviar
+  const processedFile = await compressImage(file);
+
   if (!config.cloudName || !config.uploadPreset) {
     // Si no está configurado Cloudinary aún, convertimos a DataURL para no bloquear al usuario en local
     console.warn('⚠️ Cloudinary no está configurado (falta cloudName o uploadPreset). Usando modo local con FileReader...');
@@ -46,13 +161,13 @@ export const uploadImageToCloudinary = async (file, onProgress) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(processedFile);
     });
   }
 
   const url = `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`;
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', processedFile);
   formData.append('upload_preset', config.uploadPreset);
 
   return new Promise((resolve, reject) => {
@@ -75,7 +190,12 @@ export const uploadImageToCloudinary = async (file, onProgress) => {
       } else {
         try {
           const errData = JSON.parse(xhr.responseText);
-          reject(new Error(errData.error?.message || 'Error al subir imagen a Cloudinary'));
+          const rawMsg = errData.error?.message || '';
+          if (rawMsg.includes('File size too large') || rawMsg.includes('Maximum is 10485760')) {
+            reject(new Error(`La imagen supera el límite de 10 MB de Cloudinary gratuito (${(processedFile.size / 1024 / 1024).toFixed(1)} MB). Intenta con una imagen de menor peso.`));
+          } else {
+            reject(new Error(rawMsg || 'Error al subir imagen a Cloudinary'));
+          }
         } catch {
           reject(new Error(`Error ${xhr.status} al subir a Cloudinary`));
         }
@@ -100,10 +220,13 @@ export const uploadModelToCloudinary = async (file, onProgress) => {
     throw new Error('Configura tu Cloud Name y Upload Preset de Cloudinary en el Admin para subir archivos 3D .glb');
   }
 
-  // Los modelos 3D se suben como raw o auto en Cloudinary
+  // Optimizar el archivo GLB si pesa más de 9.5 MB para no rebasar el límite de Cloudinary
+  const readyFile = await optimizeGlbModel(file, onProgress);
+
+  // Los modelos 3D se suben como raw en Cloudinary
   const url = `https://api.cloudinary.com/v1_1/${config.cloudName}/raw/upload`;
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', readyFile);
   formData.append('upload_preset', config.uploadPreset);
 
   return new Promise((resolve, reject) => {
@@ -126,7 +249,12 @@ export const uploadModelToCloudinary = async (file, onProgress) => {
       } else {
         try {
           const errData = JSON.parse(xhr.responseText);
-          reject(new Error(errData.error?.message || 'Error al subir modelo 3D a Cloudinary'));
+          const rawMsg = errData.error?.message || '';
+          if (rawMsg.includes('File size too large') || rawMsg.includes('Maximum is 10485760')) {
+            reject(new Error(`El modelo 3D supera el límite de 10 MB de Cloudinary gratuito (${(readyFile.size / 1024 / 1024).toFixed(1)} MB). Te recomendamos descargarlo en resolución 1k o 2k en vez de 4k para que sea ultra liviano.`));
+          } else {
+            reject(new Error(rawMsg || 'Error al subir modelo 3D a Cloudinary'));
+          }
         } catch {
           reject(new Error(`Error ${xhr.status} al subir modelo 3D a Cloudinary`));
         }
