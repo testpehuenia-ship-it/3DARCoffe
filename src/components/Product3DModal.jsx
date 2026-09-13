@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   RotateCw, 
+  RotateCcw,
   Maximize2, 
   QrCode, 
   Plus, 
@@ -10,13 +10,18 @@ import {
   Camera, 
   Sparkles,
   Smartphone,
-  Info
+  Info,
+  ZoomIn,
+  ZoomOut,
+  Compass,
+  Layers
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function Product3DModal({ product, onClose, onAddToCart, currentQuantity = 0 }) {
   const [modelLoaded, setModelLoaded] = useState(false);
-  const [isAutoRotating, setIsAutoRotating] = useState(true);
+  const [isAutoRotating, setIsAutoRotating] = useState(false);
+  const [activeAnglePreset, setActiveAnglePreset] = useState('table');
   const [showQrCode, setShowQrCode] = useState(false);
   const [addedAnimation, setAddedAnimation] = useState(false);
   const [quantity, setQuantity] = useState(currentQuantity > 0 ? currentQuantity : 1);
@@ -69,10 +74,44 @@ export default function Product3DModal({ product, onClose, onAddToCart, currentQ
   // URL para el código QR (permite abrir directamente este producto en el móvil)
   const mobileArUrl = `${window.location.origin}/?product3d=${product.id}`;
 
-  const handleResetCamera = () => {
+  // Endereza la base del producto a un ángulo horizontal nivelado
+  const handleLevelBase = () => {
     if (modelViewerRef.current) {
       modelViewerRef.current.cameraOrbit = '0deg 75deg 105%';
       modelViewerRef.current.cameraTarget = 'auto auto auto';
+      modelViewerRef.current.fieldOfView = 'auto';
+      setActiveAnglePreset('table');
+    }
+  };
+
+  // Vista frontal a nivel de mesa
+  const handleFrontView = () => {
+    if (modelViewerRef.current) {
+      modelViewerRef.current.cameraOrbit = '0deg 90deg 105%';
+      modelViewerRef.current.cameraTarget = 'auto auto auto';
+      setActiveAnglePreset('front');
+    }
+  };
+
+  // Vista superior cenital (para ver desde arriba)
+  const handleTopView = () => {
+    if (modelViewerRef.current) {
+      modelViewerRef.current.cameraOrbit = '0deg 15deg 105%';
+      modelViewerRef.current.cameraTarget = 'auto auto auto';
+      setActiveAnglePreset('top');
+    }
+  };
+
+  // Zoom manual con botones flotantes
+  const handleZoomIn = () => {
+    if (modelViewerRef.current && typeof modelViewerRef.current.zoom === 'function') {
+      modelViewerRef.current.zoom(1);
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (modelViewerRef.current && typeof modelViewerRef.current.zoom === 'function') {
+      modelViewerRef.current.zoom(-1);
     }
   };
 
@@ -211,12 +250,20 @@ export default function Product3DModal({ product, onClose, onAddToCart, currentQ
             alt={product.name}
             ar
             ar-modes="webxr scene-viewer quick-look"
-            ar-scale="fixed"
+            ar-scale="auto"
             ar-placement="floor"
             camera-controls
-            auto-rotate
-            auto-rotate-delay="1000"
-            rotation-per-second="20deg"
+            touch-action="none"
+            interaction-prompt="none"
+            camera-orbit="0deg 75deg 105%"
+            min-camera-orbit="auto 5deg auto"
+            max-camera-orbit="auto 90deg auto"
+            min-field-of-view="12deg"
+            max-field-of-view="45deg"
+            orbit-sensitivity="1.2"
+            zoom-sensitivity="1.2"
+            pan-sensitivity="1.5"
+            interpolation-decay="200"
             shadow-intensity="1.5"
             shadow-softness="0.9"
             exposure="1.05"
@@ -268,11 +315,78 @@ export default function Product3DModal({ product, onClose, onAddToCart, currentQ
             gap: '8px',
             zIndex: 10
           }}>
+            {/* Botón Enderezar base / Nivelar cámara */}
+            <button
+              onClick={handleLevelBase}
+              title="Enderezar base y nivelar horizontal"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                border: '1.5px solid #D4A373',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                color: '#8B5A2B',
+                transition: 'all 0.2s'
+              }}
+            >
+              <RotateCcw size={17} />
+            </button>
+
+            {/* Botón Zoom + */}
+            <button
+              onClick={handleZoomIn}
+              title="Agrandar modelo (Zoom +)"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.88)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                color: '#2C3E2D',
+                transition: 'all 0.2s'
+              }}
+            >
+              <ZoomIn size={17} />
+            </button>
+
+            {/* Botón Zoom - */}
+            <button
+              onClick={handleZoomOut}
+              title="Achicar modelo (Zoom -)"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.88)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                color: '#2C3E2D',
+                transition: 'all 0.2s'
+              }}
+            >
+              <ZoomOut size={17} />
+            </button>
+
+            {/* Botón Giro automático (opcional, apagado por defecto) */}
             <button
               onClick={handleToggleAutoRotate}
-              title={isAutoRotating ? 'Pausar rotación' : 'Activar rotación automática'}
+              title={isAutoRotating ? 'Pausar rotación automática' : 'Girar automáticamente'}
               style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                backgroundColor: isAutoRotating ? '#D4A373' : 'rgba(255, 255, 255, 0.88)',
                 border: 'none',
                 borderRadius: '50%',
                 width: '36px',
@@ -282,37 +396,19 @@ export default function Product3DModal({ product, onClose, onAddToCart, currentQ
                 justifyContent: 'center',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                color: isAutoRotating ? '#2C3E2D' : '#888'
+                color: isAutoRotating ? '#1A241B' : '#888',
+                transition: 'all 0.2s'
               }}
             >
-              <RotateCw size={17} style={{ transform: isAutoRotating ? 'rotate(45deg)' : 'none' }} />
+              <RotateCw size={17} />
             </button>
 
-            <button
-              onClick={handleResetCamera}
-              title="Centrar vista"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.85)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '36px',
-                height: '36px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                color: '#2C3E2D'
-              }}
-            >
-              <Maximize2 size={17} />
-            </button>
-
+            {/* Botón QR móvil */}
             <button
               onClick={() => setShowQrCode(!showQrCode)}
               title="Abrir en celular con QR"
               style={{
-                backgroundColor: showQrCode ? '#2C3E2D' : 'rgba(255, 255, 255, 0.85)',
+                backgroundColor: showQrCode ? '#2C3E2D' : 'rgba(255, 255, 255, 0.88)',
                 border: 'none',
                 borderRadius: '50%',
                 width: '36px',
@@ -322,31 +418,104 @@ export default function Product3DModal({ product, onClose, onAddToCart, currentQ
                 justifyContent: 'center',
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                color: showQrCode ? '#FFFFFF' : '#2C3E2D'
+                color: showQrCode ? '#FFFFFF' : '#2C3E2D',
+                transition: 'all 0.2s'
               }}
             >
               <QrCode size={17} />
             </button>
           </div>
 
-          {/* Guía de interacción interactiva */}
+          {/* Selector de ángulos rápidos para enderezar y ver diferentes perspectivas */}
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            left: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            backgroundColor: 'rgba(20, 28, 21, 0.72)',
+            backdropFilter: 'blur(8px)',
+            padding: '3px 5px',
+            borderRadius: '999px',
+            border: '1px solid rgba(212, 163, 115, 0.3)',
+            zIndex: 10
+          }}>
+            <button
+              onClick={handleLevelBase}
+              style={{
+                backgroundColor: activeAnglePreset === 'table' ? '#D4A373' : 'transparent',
+                color: activeAnglePreset === 'table' ? '#1A241B' : '#E8E1D9',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '3px 8px',
+                fontSize: '0.70rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <Compass size={11} />
+              <span>Nivelar (3/4)</span>
+            </button>
+
+            <button
+              onClick={handleFrontView}
+              style={{
+                backgroundColor: activeAnglePreset === 'front' ? '#D4A373' : 'transparent',
+                color: activeAnglePreset === 'front' ? '#1A241B' : '#E8E1D9',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '3px 8px',
+                fontSize: '0.70rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Frente (90°)
+            </button>
+
+            <button
+              onClick={handleTopView}
+              style={{
+                backgroundColor: activeAnglePreset === 'top' ? '#D4A373' : 'transparent',
+                color: activeAnglePreset === 'top' ? '#1A241B' : '#E8E1D9',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '3px 8px',
+                fontSize: '0.70rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Arriba
+            </button>
+          </div>
+
+          {/* Guía de gestos táctiles */}
           <div style={{
             position: 'absolute',
             bottom: '12px',
             left: '12px',
-            backgroundColor: 'rgba(0, 0, 0, 0.55)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(6px)',
             color: '#FFFFFF',
             borderRadius: '8px',
-            padding: '4px 8px',
-            fontSize: '0.72rem',
+            padding: '5px 9px',
+            fontSize: '0.68rem',
             pointerEvents: 'none',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px'
+            gap: '6px',
+            border: '1px solid rgba(255,255,255,0.12)'
           }}>
-            <Info size={12} color="#D4A373" />
-            <span>Arrastra para girar 360° • Pellizca para zoom</span>
+            <span style={{ color: '#D4A373', fontWeight: 'bold' }}>Gestos:</span>
+            <span>👆 1 dedo: Rotar / inclinar • ✌️ 2 dedos: Zoom y mover</span>
           </div>
 
           {/* Modal / Overlay de Código QR para usuarios de Desktop */}
