@@ -31,3 +31,10 @@ dist-ssr
 data_orders.json
 
 .vercel
+
+# Python / TripoSR
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/

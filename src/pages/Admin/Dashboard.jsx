@@ -624,40 +624,35 @@ const Dashboard = () => {
       return;
     }
 
-    // Si tiene API Key de Meshy configurada, ejecutamos la generación por IA real con sondeo de progreso
-    if (cloudinaryConfig.meshyApiKey) {
-      setIsGenerating3D(true);
-      setAiFeedbackMessage('🤖 Conectando con Meshy AI Image-to-3D...');
-      try {
-        const result = await generate3DFromImage({
-          imageUrl: formData.image,
-          name: formData.name,
-          category: formData.category,
-          meshyApiKey: cloudinaryConfig.meshyApiKey,
-          onProgress: (percent, msg) => {
-            setAiFeedbackMessage(`⏳ IA 3D (${percent}%): ${msg}`);
-          }
-        });
+    setIsGenerating3D(true);
+    setAiFeedbackMessage('🤖 Conectando con TripoSR (IA 3D open source)...');
 
-        setFormData(prev => ({
-          ...prev,
-          hasAR: true,
-          modelUrl: result.modelUrl,
-          widthCm: result.widthCm || '12',
-          heightCm: result.heightCm || '10',
-          depthCm: result.depthCm || '12'
-        }));
+    try {
+      const result = await generate3DFromImage({
+        imageUrl: formData.image,
+        name: formData.name,
+        category: formData.category,
+        onProgress: (percent, msg) => {
+          setAiFeedbackMessage(`⏳ TripoSR (${percent}%): ${msg}`);
+        }
+      });
 
-        setAiFeedbackMessage('✨ ¡Modelo 3D (.glb) generado con éxito por IA!');
-        setTimeout(() => setAiFeedbackMessage(''), 5000);
-      } catch (err) {
-        alert(`Error al generar 3D con IA: ${err.message}`);
-      } finally {
-        setIsGenerating3D(false);
-      }
-    } else {
-      // Si no hay API Key de Meshy, abrimos el Asistente 3D para guiar al usuario
+      setFormData(prev => ({
+        ...prev,
+        hasAR: true,
+        modelUrl: result.modelUrl,
+        widthCm: result.widthCm || '12',
+        heightCm: result.heightCm || '10',
+        depthCm: result.depthCm || '12'
+      }));
+
+      setAiFeedbackMessage('✨ ¡Modelo 3D (.glb) generado gratis con TripoSR! Ahora guarda el producto.');
+      setTimeout(() => setAiFeedbackMessage(''), 7000);
+    } catch (err) {
+      alert(`No se pudo conectar con el servidor 3D TripoSR (${err.message}).\n\nAbriendo el Asistente 3D para que puedas elegir una plantilla o generar tu GLB...`);
       setShow3DAssistantModal(true);
+    } finally {
+      setIsGenerating3D(false);
     }
   };
 
@@ -3018,30 +3013,48 @@ const Dashboard = () => {
 
               {/* Botón de Generación de 3D con IA a partir de la foto */}
               {formData.image && (
-                <button
-                  type="button"
-                  onClick={handleGenerate3DFromPhoto}
-                  disabled={isGenerating3D}
-                  style={{
-                    backgroundColor: '#FAF5EE',
-                    border: '1.5px solid #D4A373',
-                    color: '#8B5A2B',
-                    borderRadius: '10px',
-                    padding: '0.65rem 1rem',
-                    fontSize: '0.85rem',
-                    fontWeight: '700',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    cursor: isGenerating3D ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 2px 6px rgba(212, 163, 115, 0.25)',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <Sparkles size={16} color="#D4A373" />
-                  <span>{isGenerating3D ? 'Generando modelo 3D con IA...' : 'Generar Vista 3D / AR desde la Foto'}</span>
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleGenerate3DFromPhoto}
+                    disabled={isGenerating3D}
+                    style={{
+                      backgroundColor: '#FAF5EE',
+                      border: '1.5px solid #D4A373',
+                      color: '#8B5A2B',
+                      borderRadius: '10px',
+                      padding: '0.65rem 1rem',
+                      fontSize: '0.85rem',
+                      fontWeight: '700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      cursor: isGenerating3D ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 6px rgba(212, 163, 115, 0.25)',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Sparkles size={16} color="#D4A373" />
+                    <span>{isGenerating3D ? 'Generando modelo 3D con IA...' : 'Generar 3D / AR gratis desde la Foto'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShow3DAssistantModal(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#8B5A2B',
+                      fontSize: '0.78rem',
+                      fontWeight: '600',
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      padding: '0.2rem'
+                    }}
+                  >
+                    💡 O ver opciones, plantillas limpias y guía TripoSR
+                  </button>
+                </div>
               )}
 
               {/* Mensaje de feedback de IA / Subida */}
@@ -3363,23 +3376,6 @@ const Dashboard = () => {
                 </span>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: '#374151', marginBottom: '0.35rem' }}>
-                  Meshy AI API Key <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#6b7280' }}>(Opcional)</span>
-                </label>
-                <input
-                  type="password"
-                  value={cloudinaryConfig.meshyApiKey || ''}
-                  onChange={(e) => setCloudinaryConfigState(prev => ({ ...prev, meshyApiKey: e.target.value.trim() }))}
-                  placeholder="msy_..."
-                  className="input"
-                  style={{ width: '100%', fontSize: '0.9rem' }}
-                />
-                <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>
-                  Opcional. Si no tienes Meshy, el sistema asignará inteligentemente tazas limpias con plato, copas o platos servidos sin costo.
-                </span>
-              </div>
-
               <div style={{
                 display: 'flex',
                 justifyContent: 'flex-end',
@@ -3457,7 +3453,7 @@ const Dashboard = () => {
                   <Sparkles size={13} color="#D4A373" /> Asistente de Modelado 3D & AR
                 </div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--color-primary, #2C3E2D)', margin: 0 }}>
-                  ¿Cómo deseas preparar la vista 3D de tu foto?
+                  Generación 3D gratuita con IA open source
                 </h3>
               </div>
               <button 
@@ -3508,7 +3504,7 @@ const Dashboard = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
                 <span style={{ fontSize: '1.1rem' }}>🤖</span>
                 <strong style={{ fontSize: '0.92rem', color: '#1e293b' }}>
-                  Opción 1: Generar modelo 3D real con IA Gratuita (30 seg)
+                  Opción 1: Generar modelo 3D real con TripoSR (gratis)
                 </strong>
               </div>
               <p style={{ fontSize: '0.78rem', color: '#475569', margin: '0 0 0.75rem 0', lineHeight: '1.4' }}>
@@ -3535,7 +3531,7 @@ const Dashboard = () => {
                   ⚡ Abrir Tripo3D (10 seg) ↗
                 </a>
                 <a
-                  href="https://www.meshy.ai"
+                  href="https://github.com/VAST-AI-Research/TripoSR"
                   target="_blank"
                   rel="noreferrer"
                   style={{
@@ -3551,11 +3547,11 @@ const Dashboard = () => {
                     textDecoration: 'none'
                   }}
                 >
-                  ✨ Abrir Meshy.ai ↗
+                  ✨ Ver TripoSR en GitHub ↗
                 </a>
               </div>
               <p style={{ fontSize: '0.72rem', color: '#64748b', margin: 0, lineHeight: '1.3' }}>
-                👉 <strong>Pasos:</strong> 1. Sube tu foto en Tripo3D o Meshy. 2. Descarga el archivo <strong>.glb</strong>. 3. Pulsa el botón <strong>"Subir .glb local"</strong> aquí en el formulario (se guardará en tu Cloudinary).
+                👉 <strong>Pasos:</strong> 1. Sube tu foto en Tripo3D. 2. Descarga el archivo <strong>.glb</strong>. 3. Pulsa el botón <strong>"Subir .glb local"</strong> aquí en el formulario (se guardará en tu Cloudinary).
               </p>
             </div>
 
@@ -3679,7 +3675,7 @@ const Dashboard = () => {
               fontSize: '0.78rem'
             }}>
               <span style={{ color: '#475569' }}>
-                ¿Quieres generar 3D en 1 clic directamente desde aquí?
+                Generación automática desde esta aplicación
               </span>
               <button
                 type="button"
@@ -3698,7 +3694,7 @@ const Dashboard = () => {
                   cursor: 'pointer'
                 }}
               >
-                ⚙️ Configurar Meshy API Key
+                ⚙️ Configuración del generador local
               </button>
             </div>
 

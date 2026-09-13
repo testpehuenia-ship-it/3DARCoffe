@@ -10,8 +10,7 @@ export const getCloudinaryConfig = () => {
         return {
           cloudName: parsed.cloudName || import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '',
           uploadPreset: parsed.uploadPreset || import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '',
-          apiKey: parsed.apiKey || import.meta.env.VITE_CLOUDINARY_API_KEY || '',
-          meshyApiKey: parsed.meshyApiKey || import.meta.env.VITE_MESHY_API_KEY || ''
+          apiKey: parsed.apiKey || import.meta.env.VITE_CLOUDINARY_API_KEY || ''
         };
       }
     } catch (e) {
@@ -23,8 +22,7 @@ export const getCloudinaryConfig = () => {
   return {
     cloudName: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '',
     uploadPreset: import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '',
-    apiKey: import.meta.env.VITE_CLOUDINARY_API_KEY || '',
-    meshyApiKey: import.meta.env.VITE_MESHY_API_KEY || ''
+    apiKey: import.meta.env.VITE_CLOUDINARY_API_KEY || ''
   };
 };
 
@@ -215,89 +213,60 @@ export const getCleanTemplateModel = ({ name = '', category = 'cafeteria' }) => 
 };
 
 /**
- * Genera un modelo 3D con IA o asocia la plantilla limpia
- * @param {Object} params - { imageUrl, name, category, meshyApiKey, onProgress }
+ * Genera un modelo 3D localmente con TripoSR.
+ * No usa Meshy ni requiere una API de pago.
+ * El endpoint se ejecuta en una PC/VPS con GPU y devuelve un GLB.
  */
-export const generate3DFromImage = async ({ 
-  imageUrl, 
-  name = '', 
-  category = 'cafeteria', 
-  meshyApiKey = '',
-  onProgress 
+export const generate3DFromImage = async ({
+  imageUrl,
+  name = '',
+  category = 'cafeteria',
+  onProgress
 }) => {
-  const apiKey = meshyApiKey || import.meta.env.VITE_MESHY_API_KEY || '';
+  if (!imageUrl) throw new Error('Falta la imagen del producto.');
 
-  // Si el usuario tiene API Key de Meshy y una URL pública de Cloudinary/Web
-  if (apiKey && imageUrl && imageUrl.startsWith('http')) {
-    try {
-      console.log('🤖 Iniciando generación 3D con Meshy AI...');
-      if (onProgress) onProgress(10, 'Iniciando generación con Meshy AI...');
+  const apiUrl = (import.meta.env.VITE_TRIPOSR_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+  onProgress?.(5, 'Conectando con el generador 3D gratuito local...');
 
-      const response = await fetch('https://api.meshy.ai/v2/image-to-3d', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          enable_pbr: true,
-          ai_model: 'meshy-4',
-          should_remesh: true,
-          negative_prompt: 'table, furniture, background, wooden board, surface, floor, dining table'
-        })
-      });
-
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.message || `Error en Meshy (${response.status})`);
-      }
-
-      const data = await response.json();
-      const taskId = data.result;
-      console.log('⏳ Tarea Meshy creada:', taskId);
-
-      // Sondeo del progreso (polling)
-      let attempts = 0;
-      while (attempts < 60) {
-        await new Promise(r => setTimeout(r, 4000));
-        attempts++;
-
-        const pollRes = await fetch(`https://api.meshy.ai/v2/image-to-3d/${taskId}`, {
-          headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
-
-        if (pollRes.ok) {
-          const taskData = await pollRes.json();
-          const progress = taskData.progress || Math.min(95, attempts * 4);
-          if (onProgress) onProgress(progress, `Construyendo modelo 3D con IA (${progress}%)...`);
-
-          if (taskData.status === 'SUCCEEDED' && taskData.model_urls?.glb) {
-            return {
-              modelUrl: taskData.model_urls.glb,
-              widthCm: '12',
-              heightCm: '10',
-              depthCm: '12',
-              isAiGenerated: true,
-              templateName: 'Modelo 3D Generado con IA (Meshy)'
-            };
-          }
-
-          if (taskData.status === 'FAILED') {
-            throw new Error(taskData.task_error?.message || 'Meshy no pudo generar el modelo 3D.');
-          }
-        }
-      }
-      throw new Error('Tiempo de espera agotado. El modelo tarda más de lo previsto.');
-    } catch (error) {
-      console.error('Error generando con Meshy AI:', error);
-      throw error;
-    }
+  let response;
+  try {
+    response = await fetch(`${apiUrl}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: imageUrl, name, category })
+    });
+  } catch (error) {
+    throw new Error(
+      `No se pudo conectar con TripoSR. Inicia el servidor local en el puerto 8000. (${error.message})`
+    );
   }
 
-  // Si no hay API Key configurada
+  if (!response.ok) {
+    let message = `Error del generador 3D (${response.status})`;
+    try {
+      const data = await response.json();
+      message = data.detail || data.message || message;
+    } catch { /* respuesta no JSON */ }
+    throw new Error(message);
+  }
+
+  onProgress?.(90, 'Modelo generado. Preparando archivo GLB...');
+  const blob = await response.blob();
+  const file = new File([blob], `${(name || 'producto').replace(/[^a-z0-9_-]/gi, '_')}.glb`, {
+    type: 'model/gltf-binary'
+  });
+
+  onProgress?.(100, 'GLB listo.');
+
+  // El frontend sube el GLB resultante a Cloudinary, igual que un GLB manual.
+  const modelUrl = await uploadModelToCloudinary(file);
+
   return {
-    ...getCleanTemplateModel({ name, category }),
-    hasApiKey: false
+    modelUrl,
+    widthCm: '12',
+    heightCm: '10',
+    depthCm: '12',
+    isAiGenerated: true,
+    templateName: 'Modelo 3D generado con TripoSR (open source)'
   };
 };
